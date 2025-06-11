@@ -855,14 +855,15 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9dab1e8dcf3eb1e4d8e433a2524e0d8c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  target: {fileID: 1811883357}
-  height: 2
-  distance: 15
-  rotationSpeed: 5
-  invertY: 0
-  minPitch: -30
-  maxPitch: 60
-  followSmoothness: 10
+  _target: {fileID: 1811883357}
+  _height: 2
+  _distance: 15
+  _rotationSpeed: 5
+  _invertY: 0
+  _minPitch: -30
+  _maxPitch: 60
+  _followSmoothness: 10
+  _upSmoothness: 5
 --- !u!1 &1145634442
 GameObject:
   m_ObjectHideFlags: 0
