@@ -3,52 +3,63 @@ using UnityEngine;
 public class FreeSpringCamera : MonoBehaviour
 {
     [Header("Target Settings")]
-    public Transform target;
-    public float height = 2.0f;
-    public float distance = 4.0f;
+    [SerializeField] private Transform _target;
+    [SerializeField] private float _height = 2.0f;
+    [SerializeField] private float _distance = 4.0f;
 
     [Header("Rotation Settings")]
-    public float rotationSpeed = 5.0f;
-    public bool invertY = false;
-    public float minPitch = -30f;
-    public float maxPitch = 60f;
+    [SerializeField] private float _rotationSpeed = 5.0f;
+    [SerializeField] private bool _invertY = false;
+    [SerializeField] private float _minPitch = -30f;
+    [SerializeField] private float _maxPitch = 60f;
 
     [Header("Spring Settings")]
-    public float followSmoothness = 10.0f;
+    [SerializeField] private float _followSmoothness = 10.0f;
+    [SerializeField] private float _upSmoothness = 5.0f;
 
-    private float yaw;
-    private float pitch;
-    private Vector3 currentVelocity;
+    private float _yaw;
+    private float _pitch;
+    private Vector3 _currentVelocity;
+    private Vector3 _smoothedUp = Vector3.up;
 
     void LateUpdate()
     {
-        if (target == null) return;
+        if (_target == null) return;
 
-        // Обробка обертання мишкою
-        float mouseX = Input.GetAxis("Mouse X") * rotationSpeed;
-        float mouseY = Input.GetAxis("Mouse Y") * rotationSpeed * (invertY ? 1 : -1);
+        float mouseX = Input.GetAxis("Mouse X") * _rotationSpeed;
+        float mouseY = Input.GetAxis("Mouse Y") * _rotationSpeed * (_invertY ? 1 : -1);
 
-        yaw += mouseX;
-        pitch += mouseY;
-        pitch = Mathf.Clamp(pitch, minPitch, maxPitch);
+        _yaw += mouseX;
 
-        // Незалежне глобальне обертання по Y (yaw)
-        Quaternion yawRotation = Quaternion.Euler(0, yaw, 0);
+        // Оновлюємо smoothedUp до target.up
+        _smoothedUp = Vector3.Slerp(_smoothedUp, _target.up, Time.deltaTime * _upSmoothness);
 
-        // Pitch відносно локального горизонту (вверх/вниз по локальній осі)
-        Quaternion pitchRotation = Quaternion.AngleAxis(pitch, Vector3.right);
+        // Спершу обчислимо напрямок камери відносно павука
+        // Використаємо yaw для обертання навколо smoothedUp
+        Quaternion yawRotation = Quaternion.AngleAxis(_yaw, _smoothedUp);
 
-        // Обертання камери: глобальне yaw + локальний pitch відносно up-напрямку target
-        Quaternion cameraRotation = yawRotation * Quaternion.LookRotation(Vector3.forward, target.up) * pitchRotation;
+        // Поточний напрямок вперед камери відносно павука
+        Vector3 camForward = yawRotation * Vector3.forward;
 
-        // Позиція цілі з урахуванням локального up об'єкта
-        Vector3 targetOffset = target.position + target.up * height;
-        Vector3 desiredPosition = targetOffset - cameraRotation * Vector3.forward * distance;
+        // Локальна права вісь камери (ортогональна до camForward і smoothedUp)
+        Vector3 right = Vector3.Cross(camForward, _smoothedUp).normalized;
 
-        // Плавне переміщення камери
-        transform.position = Vector3.SmoothDamp(transform.position, desiredPosition, ref currentVelocity, 1f / followSmoothness);
+        // Тепер змінюємо pitch на основі руху миші навколо right
+        _pitch -= mouseY;
+        _pitch = Mathf.Clamp(_pitch, _minPitch, _maxPitch);
 
-        // Дивимося на об'єкт з урахуванням горизонту
-        transform.LookAt(targetOffset, target.up);
+        // Поворот навколо right (pitch)
+        Quaternion pitchRotation = Quaternion.AngleAxis(_pitch, right);
+
+        // Остаточне обертання камери
+        Quaternion finalRotation = pitchRotation * yawRotation;
+
+        Vector3 targetOffset = _target.position + _smoothedUp * _height;
+        Vector3 desiredPosition = targetOffset - finalRotation * Vector3.forward * _distance;
+
+        transform.position = Vector3.SmoothDamp(transform.position, desiredPosition, ref _currentVelocity, 1f / _followSmoothness);
+
+        transform.rotation = finalRotation;
+        transform.LookAt(targetOffset, _smoothedUp);
     }
 }
