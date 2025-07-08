@@ -10,7 +10,13 @@ public class Spider : MonoBehaviour
     [SerializeField] private float _alignSpeed = 10f;
     [SerializeField] private float _raycastDistance = 2f;
     [SerializeField] private float _stickToSurfaceForce = 1f;
+    [SerializeField] private float _alignRayOffset = 0.2f;
+    [SerializeField] private float _alignSurfaceThreshold = 0.05f;
+    [SerializeField] private float _alignSphereRadius = 0.1f;
     [SerializeField] private LayerMask _groundMask;
+
+    [Header("In Air Aligment")]
+    [SerializeField] private float _airAlignSpeed = 10f;
 
     [Header("Jump Settings")]
     [SerializeField] private float _jumpForce = 8f;
@@ -18,34 +24,73 @@ public class Spider : MonoBehaviour
     [SerializeField] private float _jumpDuration = 0.6f;
     [SerializeField] private float _minJumpPercent = 0.1f;
     [SerializeField] private float _maxChargeTime = 2f;
+    [SerializeField] private float _upwardJumpFactor = 0.8f;
 
     [Header("References")]
-    [SerializeField] private FreeSpringCamera _camera;
-    [SerializeField] private Rigidbody _rigidbody;
+    [SerializeField] private FreeSpringCamera _mainCamera;
+    [SerializeField] private Rigidbody _rigitBody;
 
     private Vector3 _currentNormal = Vector3.up;
     private float _lastJumpTime = -999f;
     private bool _isJumping = false;
     private float _jumpHoldStartTime;
     private bool _isChargingJump = false;
+    private bool _isOnSurface = false;
+
+    public bool IsOnSurface { get => _isOnSurface; }
 
     private void Awake()
     {
-        if (_rigidbody == null)
-            _rigidbody = GetComponent<Rigidbody>();
+        if (_rigitBody == null)
+            _rigitBody = GetComponent<Rigidbody>();
 
-        _rigidbody.useGravity = false;
-        _rigidbody.interpolation = RigidbodyInterpolation.Interpolate;
-        _rigidbody.collisionDetectionMode = CollisionDetectionMode.Continuous;
+        _rigitBody.useGravity = false;
+        _rigitBody.interpolation = RigidbodyInterpolation.Interpolate;
+        _rigitBody.collisionDetectionMode = CollisionDetectionMode.Continuous;
     }
 
     private void Update()
     {
-        if (Input.GetAxisRaw("Horizontal") != 0 || Input.GetAxisRaw("Vertical") != 0)
-        {
-            Move();
-        }
+        HandleMovementInput();
+        HandleRotationInput();
+        HandleJumpInput();
+    }
 
+    private void FixedUpdate()
+    {
+        if (!_isJumping && TryGetSurfaceBelow(out RaycastHit hit))
+        {
+            _isOnSurface = true;
+            AlignToSurfaceByHit(hit);
+        }
+        else
+        {
+            if (_rigitBody.linearVelocity.y > 0)
+            {
+                AlignToSurfaceByNormal(_rigitBody.linearVelocity);
+            }
+            else
+            {
+                AlignToSurfaceByNormal(-_rigitBody.linearVelocity);
+            }
+        }
+    }
+
+    private void HandleMovementInput()
+    {
+        float horizontal = Input.GetAxisRaw("Horizontal");
+        float vertical = Input.GetAxisRaw("Vertical");
+
+        if (horizontal != 0 || vertical != 0)
+        {
+            Vector3 input = transform.right * horizontal + transform.forward * vertical;
+            Vector3 moveDirection = Vector3.ProjectOnPlane(input, _currentNormal).normalized;
+            _rigitBody.MovePosition(_rigitBody.position + moveDirection * _moveSpeed * Time.deltaTime);
+        }
+    }
+
+    private void HandleRotationInput()
+    {
         if (Input.GetKey(KeyCode.Mouse1))
         {
             RotateTowardsCamera();
@@ -60,14 +105,17 @@ public class Spider : MonoBehaviour
         {
             Rotate(1f);
         }
+    }
 
-        if (Input.GetKeyDown(KeyCode.Space) && !_isJumping && !_isChargingJump && Mathf.Abs(transform.rotation.y - _camera.transform.rotation.y) < 0.1f)
+    private void HandleJumpInput()
+    {
+        if (Input.GetKeyDown(KeyCode.Space) && !_isJumping && !_isChargingJump)
         {
             _isChargingJump = true;
             _jumpHoldStartTime = Time.time;
         }
 
-        if (Input.GetKeyUp(KeyCode.Space) && _isChargingJump && Mathf.Abs(transform.rotation.y - _camera.transform.localRotation.y) < 0.1f)
+        if (Input.GetKeyUp(KeyCode.Space) && _isChargingJump)
         {
             float heldTime = Time.time - _jumpHoldStartTime;
             float chargePercent = Mathf.Clamp01(heldTime / _maxChargeTime);
@@ -78,55 +126,42 @@ public class Spider : MonoBehaviour
         }
     }
 
-    private void FixedUpdate()
-    {
-        if (!_isJumping)
-        {
-            AlignToSurface();
-        }
-    }
-
-    private void Move()
-    {
-        Vector3 input = transform.right * Input.GetAxisRaw("Horizontal") + transform.forward * Input.GetAxisRaw("Vertical");
-        Vector3 moveDir = Vector3.ProjectOnPlane(input, _currentNormal).normalized;
-
-        _rigidbody.MovePosition(_rigidbody.position + moveDir * _moveSpeed * Time.deltaTime);
-    }
-
     private void Rotate(float direction)
     {
-        Quaternion rotation = Quaternion.AngleAxis(direction * _rotationSpeed * Time.deltaTime, _currentNormal);
-        _rigidbody.MoveRotation(rotation * _rigidbody.rotation);
+        Quaternion deltaRotation = Quaternion.AngleAxis(direction * _rotationSpeed * Time.deltaTime, _currentNormal);
+        _rigitBody.MoveRotation(deltaRotation * _rigitBody.rotation);
     }
 
     private void RotateTowardsCamera()
     {
-        Vector3 camForward = Vector3.ProjectOnPlane(_camera.transform.forward, _currentNormal).normalized;
+        Vector3 camForward = Vector3.ProjectOnPlane(_mainCamera.transform.forward, _currentNormal).normalized;
         if (camForward.sqrMagnitude < 0.001f) return;
 
         Quaternion targetRotation = Quaternion.LookRotation(camForward, _currentNormal);
-        _rigidbody.MoveRotation(Quaternion.RotateTowards(_rigidbody.rotation, targetRotation, _rotationSpeed * Time.deltaTime));
+        Quaternion smoothedRotation = Quaternion.RotateTowards(_rigitBody.rotation, targetRotation, _rotationSpeed * Time.deltaTime);
+        _rigitBody.MoveRotation(smoothedRotation);
     }
 
     private void PerformJump(float chargePercent)
     {
         if (Time.time - _lastJumpTime < _jumpCooldown || _isJumping) return;
+
         _lastJumpTime = Time.time;
         _isJumping = true;
+        _rigitBody.useGravity = true;
+        _isOnSurface = false;
 
-        _rigidbody.useGravity = true;
+        Vector3 jumpDirection = Vector3.ProjectOnPlane(_mainCamera.transform.forward, _currentNormal).normalized;
+        if (jumpDirection.sqrMagnitude < 0.01f)
+        {
+            jumpDirection = transform.forward;
+        }
 
-        Vector3 jumpDir = Vector3.ProjectOnPlane(_camera.transform.forward, _currentNormal).normalized;
-        if (jumpDir.sqrMagnitude < 0.01f)
-            jumpDir = transform.forward;
+        Vector3 upward = _currentNormal * _upwardJumpFactor;
+        Vector3 jumpVector = (jumpDirection + upward).normalized;
 
-        Vector3 upwardPush = _currentNormal * 0.8f;
-        Vector3 totalJumpVector = (jumpDir + upwardPush).normalized;
-
-        _rigidbody.linearVelocity = Vector3.zero;
-        float finalJumpForce = _jumpForce * chargePercent;
-        _rigidbody.AddForce(totalJumpVector * finalJumpForce, ForceMode.VelocityChange);
+        _rigitBody.linearVelocity = Vector3.zero;
+        _rigitBody.AddForce(jumpVector * (_jumpForce * chargePercent), ForceMode.VelocityChange);
 
         Invoke(nameof(EndJump), _jumpDuration);
     }
@@ -136,34 +171,44 @@ public class Spider : MonoBehaviour
         _isJumping = false;
     }
 
-    private void AlignToSurface()
+    private void AlignToSurfaceByHit(RaycastHit hit)
     {
-        Vector3 rayOrigin = transform.position + _currentNormal * 0.2f;
-        Vector3 rayDir = -_currentNormal;
+        _rigitBody.useGravity = false;
+        _rigitBody.linearVelocity = Vector3.zero;
 
-        if (Physics.SphereCast(rayOrigin, 0.1f, rayDir, out RaycastHit hit, _raycastDistance, _groundMask))
+        _currentNormal = hit.normal;
+
+        Quaternion surfaceRotation = Quaternion.FromToRotation(transform.up, _currentNormal) * transform.rotation;
+        Quaternion smoothedRotation = Quaternion.Slerp(transform.rotation, surfaceRotation, _alignSpeed * Time.deltaTime);
+        _rigitBody.MoveRotation(smoothedRotation);
+
+        Vector3 toSurface = Vector3.Project(hit.point - transform.position, _currentNormal);
+        float distance = toSurface.magnitude;
+
+        if (distance > _alignSurfaceThreshold)
         {
-            _rigidbody.useGravity = false;
-            _rigidbody.linearVelocity = Vector3.zero;
-
-            _currentNormal = hit.normal;
-
-            Quaternion surfaceRotation = Quaternion.FromToRotation(transform.up, _currentNormal) * transform.rotation;
-            _rigidbody.MoveRotation(Quaternion.Slerp(transform.rotation, surfaceRotation, _alignSpeed * Time.deltaTime));
-
-            Vector3 toSurface = Vector3.Project(hit.point - transform.position, _currentNormal);
-            float distanceToSurface = toSurface.magnitude;
-
-            if (distanceToSurface > 0.05f)
-            {
-                _rigidbody.MovePosition(transform.position + toSurface.normalized * distanceToSurface * _stickToSurfaceForce * Time.deltaTime);
-            }
+            _rigitBody.MovePosition(transform.position + toSurface.normalized * distance * _stickToSurfaceForce * Time.deltaTime);
         }
-        else
-        {
-            _currentNormal = Vector3.up;
-        }
+    }
 
-        Debug.DrawRay(rayOrigin, rayDir * _raycastDistance, Color.red);
+    private void AlignToSurfaceByNormal(Vector3 normal)
+    {
+        _currentNormal = Vector3.Slerp(_currentNormal, normal.normalized, _airAlignSpeed * Time.deltaTime);
+
+        Quaternion surfaceRotation = Quaternion.FromToRotation(transform.up, _currentNormal) * transform.rotation;
+        Quaternion smoothedRotation = Quaternion.Slerp(transform.rotation, surfaceRotation, _airAlignSpeed * Time.deltaTime);
+        _rigitBody.MoveRotation(smoothedRotation);
+        Debug.DrawRay(transform.position,_rigitBody.linearVelocity,Color.purple);
+    }
+
+    private bool TryGetSurfaceBelow(out RaycastHit hit)
+    {
+        Vector3 rayOrigin = transform.position + transform.up * _alignRayOffset;
+        Vector3 rayDir = -transform.up;
+
+        bool found = Physics.SphereCast(rayOrigin, _alignSphereRadius, rayDir, out hit, _raycastDistance, _groundMask);
+        Debug.DrawRay(rayOrigin, rayDir * _raycastDistance, found ? Color.green : Color.red);
+
+        return found;
     }
 }

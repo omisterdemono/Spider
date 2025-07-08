@@ -1756,20 +1756,25 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _moveSpeed: 5
-  _rotationSpeed: 90
+  _rotationSpeed: 180
   _alignSpeed: 5
   _raycastDistance: 1.5
   _stickToSurfaceForce: 10
+  _alignRayOffset: 0.2
+  _alignSurfaceThreshold: 0.05
+  _alignSphereRadius: 0.1
   _groundMask:
     serializedVersion: 2
     m_Bits: 64
+  _airAlignSpeed: 2
   _jumpForce: 30
   _jumpCooldown: 0.5
   _jumpDuration: 0.5
   _minJumpPercent: 0.3
   _maxChargeTime: 2
-  _camera: {fileID: 963194229}
-  _rigidbody: {fileID: 1811883359}
+  _upwardJumpFactor: 0.8
+  _mainCamera: {fileID: 963194229}
+  _rigitBody: {fileID: 1811883359}
 --- !u!54 &1811883359
 Rigidbody:
   m_ObjectHideFlags: 0

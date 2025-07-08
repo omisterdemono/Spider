@@ -21,6 +21,12 @@ public class FreeSpringCamera : MonoBehaviour
     private float _pitch;
     private Vector3 _currentVelocity;
     private Vector3 _smoothedUp = Vector3.up;
+    private Spider _spider;
+
+    private void Awake()
+    {
+        _spider = _target.GetComponent<Spider>();
+    }
 
     void LateUpdate()
     {
@@ -59,7 +65,8 @@ public class FreeSpringCamera : MonoBehaviour
 
         transform.position = Vector3.SmoothDamp(transform.position, desiredPosition, ref _currentVelocity, 1f / _followSmoothness);
 
-        transform.rotation = finalRotation;
+        if (_spider.IsOnSurface) transform.rotation = finalRotation;
+        
         transform.LookAt(targetOffset, _smoothedUp);
     }
 }
